@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Class Grouping Marker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React and Babel -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 font-sans">
+    <div id="root"></div>
+
+    <!-- Firebase SDKs using type="module" to handle imports correctly -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, setDoc, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Expose Firebase to the global scope for the Babel-transpiled script
+        window.FirebaseSDK = {
+            initializeApp, getAuth, signInAnonymously, onAuthStateChanged,
+            getFirestore, doc, collection, setDoc, onSnapshot, deleteDoc
+        };
+
+        // Notify that Firebase is ready
+        window.dispatchEvent(new Event('firebase-ready'));
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyAOZ5E4aiaOdbOXiqK4cLlRGcCEbNi8wC8",
+            authDomain: "grouping-maker.firebaseapp.com",
+            projectId: "grouping-maker",
+            storageBucket: "grouping-maker.firebasestorage.app",
+            messagingSenderId: "995402771480",
+            appId: "1:995402771480:web:d6499fe8bfc072a0bfe76d",
+            measurementId: "G-5ZH9Z1N3RV"
+        };
+
+        const appId = "group-selector-default";
+        const MASTER_PASSWORD = "dixon8888";
+
+        // SVG Components
+        const IconGrid = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+        );
+        const IconSettings = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        );
+        const IconUsers = ({ className }) => (
+            <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        );
+        const IconX = () => (
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        );
+
+        function App() {
+            const [fbReady, setFbReady] = useState(!!window.FirebaseSDK);
+            const [user, setUser] = useState(null);
+            const [gridConfig, setGridConfig] = useState(null);
+            const [selections, setSelections] = useState({});
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+
+            const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+            const [isSelectionModalOpen, setIsSelectionModalOpen] = useState(false);
+            const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+            
+            const [targetCell, setTargetCell] = useState(null);
+            const [passwordInput, setPasswordInput] = useState("");
+            const [numberInput, setNumberInput] = useState("");
+            const [tempX, setTempX] = useState(3);
+            const [tempY, setTempY] = useState(4);
+
+            useEffect(() => {
+                const handleReady = () => setFbReady(true);
+                window.addEventListener('firebase-ready', handleReady);
+                return () => window.removeEventListener('firebase-ready', handleReady);
+            }, []);
+
+            useEffect(() => {
+                if (!fbReady) return;
+                
+                const { initializeApp, getAuth, signInAnonymously, onAuthStateChanged } = window.FirebaseSDK;
+                const app = initializeApp(firebaseConfig);
+                const auth = getAuth(app);
+                
+                const initAuth = async () => {
+                    try {
+                        await signInAnonymously(auth);
+                    } catch (err) {
+                        console.error("Auth error:", err);
+                        setError("Failed to authenticate.");
+                    }
+                };
+                initAuth();
+                return onAuthStateChanged(auth, setUser);
+            }, [fbReady]);
+
+            useEffect(() => {
+                if (!user || !fbReady) return;
+
+                const { getFirestore, doc, collection, onSnapshot } = window.FirebaseSDK;
+                const app = window.FirebaseSDK.initializeApp(firebaseConfig);
+                const db = getFirestore(app);
+
+                const configDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'config', 'main');
+                const unsubConfig = onSnapshot(configDocRef, (docSnap) => {
+                    if (docSnap.exists()) {
+                        setGridConfig(docSnap.data());
+                    }
+                    setLoading(false);
+                }, (err) => {
+                    console.error("Config error:", err);
+                    setError("Failed to sync grid.");
+                    setLoading(false);
+                });
+
+                const selectionsCol = collection(db, 'artifacts', appId, 'public', 'data', 'selections');
+                const unsubSelections = onSnapshot(selectionsCol, (snapshot) => {
+                    const data = {};
+                    snapshot.forEach(doc => { data[doc.id] = doc.data(); });
+                    setSelections(data);
+                });
+
+                return () => { unsubConfig(); unsubSelections(); };
+            }, [user, fbReady]);
+
+            const handleCreateGrid = async () => {
+                if (passwordInput !== MASTER_PASSWORD) { setError("Incorrect password"); return; }
+                const { getFirestore, doc, setDoc } = window.FirebaseSDK;
+                const db = getFirestore();
+                setLoading(true);
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'config', 'main'), {
+                        x: parseInt(tempX),
+                        y: parseInt(tempY),
+                        updatedAt: Date.now()
+                    });
+                    setIsConfigModalOpen(false);
+                    setPasswordInput("");
+                    setError("");
+                } catch (err) { setError("Failed to update grid"); }
+                finally { setLoading(false); }
+            };
+
+            const handleCellClick = (groupIndex, mateIndex) => {
+                const cellId = `g${groupIndex}-m${mateIndex}`;
+                setTargetCell({ groupIndex, mateIndex, cellId });
+                setError(null);
+                if (selections[cellId]?.value) setIsDeleteModalOpen(true);
+                else setIsSelectionModalOpen(true);
+            };
+
+            const confirmSelection = async () => {
+                const { getFirestore, doc, setDoc } = window.FirebaseSDK;
+                const db = getFirestore();
+                const num = parseInt(numberInput);
+                if (isNaN(num) || num < 1 || num > 100) { setError("Enter 1-100"); return; }
+                if (Object.values(selections).some(s => s.value === num)) { setError(`Number ${num} is taken!`); return; }
+
+                try {
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'selections', targetCell.cellId), {
+                        value: num,
+                        timestamp: Date.now(),
+                        userId: user.uid
+                    });
+                    setIsSelectionModalOpen(false);
+                    setNumberInput("");
+                } catch (err) { setError("Save failed"); }
+            };
+
+            const confirmDelete = async () => {
+                if (passwordInput !== MASTER_PASSWORD) { setError("Incorrect password"); return; }
+                const { getFirestore, deleteDoc, doc } = window.FirebaseSDK;
+                const db = getFirestore();
+                try {
+                    await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'selections', targetCell.cellId));
+                    setIsDeleteModalOpen(false);
+                    setPasswordInput("");
+                } catch (err) { setError("Delete failed"); }
+            };
+
+            if (loading && !error) return <div className="flex h-screen items-center justify-center text-slate-500 font-medium">Initializing...</div>;
+
+            return (
+                <div className="min-h-screen p-4 md:p-8">
+                    <div className="max-w-6xl mx-auto space-y-6">
+                        <header className="flex items-center justify-between bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                            <div>
+                                <h1 className="text-2xl font-bold flex items-center gap-2"><IconGrid /> Grouping Maker</h1>
+                                <p className="text-slate-500 text-sm">No duplicate numbers allowed.</p>
+                            </div>
+                            <button onClick={() => setIsConfigModalOpen(true)} className="p-3 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors"><IconSettings /></button>
+                        </header>
+
+                        {error && <div className="bg-red-50 text-red-700 p-4 rounded-xl border border-red-200 animate-pulse">{error}</div>}
+
+                        {!gridConfig ? (
+                            <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-300">
+                                <p className="text-slate-400 mb-4">Grid not configured</p>
+                                <button onClick={() => setIsConfigModalOpen(true)} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold">Setup Grid</button>
+                            </div>
+                        ) : (
+                            <div className="overflow-x-auto pb-4">
+                                <div className="grid gap-6" style={{ gridTemplateColumns: `repeat(${gridConfig.x}, minmax(200px, 1fr))` }}>
+                                    {Array.from({ length: gridConfig.x }).map((_, gIdx) => (
+                                        <div key={gIdx} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+                                            <h3 className="font-bold mb-4 text-center border-b text-blue-600 pb-2">Group {gIdx + 1}</h3>
+                                            <div className="grid gap-3">
+                                                {Array.from({ length: gridConfig.y }).map((_, mIdx) => {
+                                                    const cellId = `g${gIdx}-m${mIdx}`;
+                                                    const selection = selections[cellId];
+                                                    return (
+                                                        <button key={mIdx} onClick={() => handleCellClick(gIdx, mIdx)} className={`h-16 w-full rounded-xl flex items-center justify-center text-xl font-bold transition-all ${selection?.value ? 'bg-slate-900 text-white shadow-lg' : 'bg-slate-50 text-slate-200 border-2 border-dashed border-slate-200 hover:border-blue-300 hover:bg-blue-50'}`}>
+                                                            {selection?.value || <IconUsers className="opacity-20" />}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Modals */}
+                    {isConfigModalOpen && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl">
+                                <div className="flex justify-between mb-6"><h2 className="text-2xl font-bold">Setup Grid</h2><button onClick={() => setIsConfigModalOpen(false)} className="text-slate-400 hover:text-slate-600"><IconX/></button></div>
+                                <div className="space-y-5">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">Groups (X)</label>
+                                            <input type="number" value={tempX} onChange={e => setTempX(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl focus:ring-2 ring-blue-500 outline-none" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-400 uppercase">Members (Y)</label>
+                                            <input type="number" value={tempY} onChange={e => setTempY(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl focus:ring-2 ring-blue-500 outline-none" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-bold text-slate-400 uppercase">Admin Password</label>
+                                        <input type="password" placeholder="dixon8888" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} className="w-full p-3 bg-slate-100 rounded-xl focus:ring-2 ring-blue-500 outline-none" />
+                                    </div>
+                                    <button onClick={handleCreateGrid} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 transition-shadow hover:shadow-lg">Reset Grid</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isSelectionModalOpen && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl">
+                                <h2 className="text-2xl font-bold mb-4">Choose Number</h2>
+                                <input type="number" autoFocus value={numberInput} onChange={e => setNumberInput(e.target.value)} className="w-full p-5 text-4xl font-bold bg-slate-100 rounded-2xl mb-6 text-center focus:ring-2 ring-blue-500 outline-none" />
+                                <div className="flex gap-3">
+                                    <button onClick={() => setIsSelectionModalOpen(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold hover:bg-slate-200">Cancel</button>
+                                    <button onClick={confirmSelection} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-md">Confirm</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {isDeleteModalOpen && (
+                        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                            <div className="bg-white w-full max-w-sm rounded-3xl p-8 shadow-2xl">
+                                <h2 className="text-xl font-bold mb-6 text-center">Clear Entry?</h2>
+                                <input type="password" placeholder="Admin Password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} className="w-full p-4 bg-slate-100 rounded-2xl text-center mb-4 outline-none focus:ring-2 ring-red-500" />
+                                <div className="flex gap-3">
+                                    <button onClick={() => setIsDeleteModalOpen(false)} className="flex-1 py-3 bg-slate-100 rounded-xl font-bold hover:bg-slate-200">Back</button>
+                                    <button onClick={confirmDelete} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 shadow-md">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
